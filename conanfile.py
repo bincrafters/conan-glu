@@ -1,62 +1,69 @@
-from conans import ConanFile, CMake, tools
+from conans import ConanFile, tools
+from conans.errors import ConanInvalidConfiguration
 import os
 
 
-class LibnameConan(ConanFile):
-    name = "libname"
-    description = "Keep it short"
-    topics = ("conan", "libname", "logging")
-    url = "https://github.com/bincrafters/conan-libname"
-    homepage = "https://github.com/original_author/original_lib"
-    license = "MIT"  # Indicates license type of the packaged library; please use SPDX Identifiers https://spdx.org/licenses/
-    exports_sources = ["CMakeLists.txt"]
-    generators = "cmake"
+class GluConan(ConanFile):
+    name = "glu"
+    # version = "virtual"
+    description = "Virtual package for GLU - the OpenGL Utility Library"
+    topics = ("conan", "opengl", "gl", "glu", "utility")
+    url = "https://github.com/bincrafters/conan-glu"
+    homepage = "https://opengl.org"
+    license = "None"  # TODO: Relax hooks about license attribute for virtual packages? How?
 
-    settings = "os", "arch", "compiler", "build_type"
-    options = {"shared": [True, False], "fPIC": [True, False]}
-    default_options = {"shared": False, "fPIC": True}
+    # TODO: Add check if system_libs are installed if provider=system?
+    # TODO: Write a test_package
 
-    _source_subfolder = "source_subfolder"
-    _build_subfolder = "build_subfolder"
-    _cmake = None
+    settings = {"os"}
+    options = {
+        "provider": ["system", "conan"],
+    }
+    default_options = {
+        "provider": "system",
+    }
 
-    requires = (
-        "zlib/1.2.11"
-    )
+    requires = ("opengl/virtual@bincrafters/stable")
 
-    def config_options(self):
-        if self.settings.os == 'Windows':
-            del self.options.fPIC
+    def configure(self):
+        if self.settings.os == "Windows" and self.options.provider != "system":
+            # While we could just raise an error, this would make the consumption of this package much harder
+            # And since the entire idea of this package is to abstract away OpenGL support
+            # it is probably better to force the value of the option
+            self.output.warning("On Windows only opengl:provider=system is supported! Forcing option")
+            self.options.provider = "system"
 
-    def source(self):
-        tools.get(**self.conan_data["sources"][self.version])
-        extracted_dir = self.name + "-" + self.version
-        os.rename(extracted_dir, self._source_subfolder)
+        if self.settings.os == "Macos" and self.options.provider != "system":
+            self.output.warning("On macOS only opengl:provider=system is supported! Forcing option")
+            self.options.provider = "system"
 
-    def _configure_cmake(self):
-        if not self._cmake:
-            self._cmake = CMake(self)
-            self._cmake.definitions["BUILD_TESTS"] = False  # example
-            self._cmake.configure(build_folder=self._build_subfolder)
-        return self._cmake
+    def system_requirements(self):
+        if self.options.provider == "system":
+            # Note: If you want to disable installation on your system
+            # set CONAN_SYSREQUIRES_MODE to disabled
+            if self.settings.os == "Linux" and tools.os_info.is_linux:
+                if tools.os_info.with_apt or tools.os_info.with_yum:
+                    installer = tools.SystemPackageTool()
+                    packages = []
+                    packages_apt = ["libglu1-mesa-dev"]
+                    packages_yum = ["mesa-libGLU-devel"]
 
-    def build(self):
-        cmake = self._configure_cmake()
-        cmake.build()
+                    if tools.os_info.with_apt:
+                        packages = packages_apt
+                    elif tools.os_info.with_yum:
+                        packages = packages_yum
+                    for package in packages:
+                        installer.install(package)
 
-    def package(self):
-        self.copy(pattern="LICENSE", dst="licenses", src=self._source_subfolder)
-        cmake = self._configure_cmake()
-        cmake.install()
-        # If the CMakeLists.txt has a proper install method, the steps below may be redundant
-        # If so, you can just remove the lines below
-        include_folder = os.path.join(self._source_subfolder, "include")
-        self.copy(pattern="*", dst="include", src=include_folder)
-        self.copy(pattern="*.dll", dst="bin", keep_path=False)
-        self.copy(pattern="*.lib", dst="lib", keep_path=False)
-        self.copy(pattern="*.a", dst="lib", keep_path=False)
-        self.copy(pattern="*.so*", dst="lib", keep_path=False)
-        self.copy(pattern="*.dylib", dst="lib", keep_path=False)
-
+    def requirements(self):
+        if self.options.provider == "conan":
+            self.requires("mesa-glu/9.0.1@bincrafters/stable")
+           
     def package_info(self):
-        self.cpp_info.libs = tools.collect_libs(self)
+        if self.options.provider == "system":
+            if self.settings.os == "Windows":
+                self.cpp_info.system_libs.append("glu32")
+            if self.settings.os == "Macos":
+                self.cpp_info.system_libs.extend(["GLU"])
+            if self.settings.os == "Linux":
+                self.cpp_info.system_libs.append("GLU")
