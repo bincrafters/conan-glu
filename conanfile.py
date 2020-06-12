@@ -23,7 +23,7 @@ class GluConan(ConanFile):
         "provider": "system",
     }
 
-    requires = ("opengl/virtual@bincrafters/stable")
+    requires = ("opengl/system")
 
     def configure(self):
         if self.settings.os == "Windows" and self.options.provider != "system":
